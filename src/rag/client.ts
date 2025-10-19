@@ -1,10 +1,4 @@
-import { DocChunk, RetrievedChunk } from './schema';
-
-export type Namespace =
-  | 'job_description'
-  | 'case_study_brief'
-  | 'cv_rubric'
-  | 'project_rubric';
+import { DocChunk, RetrievedChunk, Namespace } from './schema';
 
 type ChunkInput = Omit<DocChunk, 'id' | 'namespace'> & { id?: string };
 
@@ -146,3 +140,5 @@ export const queryChunks = (
   query: string,
   topK?: number,
 ): RetrievedChunk[] => ragClient.query(namespace, query, topK);
+
+export type { Namespace };

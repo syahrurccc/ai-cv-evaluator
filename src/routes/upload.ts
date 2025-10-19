@@ -12,10 +12,10 @@ const filesDir = path.resolve('.data', 'files');
 fs.mkdirSync(filesDir, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
+  destination: (_req: any, _file: any, cb: any) => {
     cb(null, filesDir);
   },
-  filename: (_req, file, cb) => {
+  filename: (_req: any, file: any, cb: any) => {
     const uniqueName = `${Date.now()}-${file.originalname}`;
     cb(null, uniqueName);
   },
@@ -34,7 +34,7 @@ router.post(
     { name: 'cv', maxCount: 1 },
     { name: 'project_report', maxCount: 1 },
   ]),
-  (req, res) => {
+  (req: any, res: any) => {
     const files = req.files as UploadRequestFiles | undefined;
     const cvFile = files?.cv?.[0];
     const projectReportFile = files?.project_report?.[0];

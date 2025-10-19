@@ -4,7 +4,7 @@ import { getJob } from '../store/jobs';
 
 const router = Router();
 
-router.get('/:id', (req, res) => {
+router.get('/:id', (req: any, res: any) => {
   const { id } = req.params;
   const job = getJob(id);
 

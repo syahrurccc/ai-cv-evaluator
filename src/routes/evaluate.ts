@@ -17,7 +17,11 @@ const evaluateSchema = z.object({
   project_file_id: z.string().min(1, 'project_file_id is required'),
 });
 
-type EvaluatePayload = z.infer<typeof evaluateSchema>;
+type EvaluatePayload = {
+  job_title: string;
+  cv_file_id: string;
+  project_file_id: string;
+};
 
 type EvaluationResult = {
   job_title: string;
@@ -114,11 +118,11 @@ const enqueueJob = (jobId: string, payload: EvaluatePayload): void => {
   });
 };
 
-router.post('/', (req, res) => {
+router.post('/', (req: any, res: any) => {
   const validation = evaluateSchema.safeParse(req.body);
 
   if (!validation.success) {
-    const issues = validation.error.issues.map((issue) => ({
+    const issues = validation.error.issues.map((issue: any) => ({
       path: issue.path.join('.') || undefined,
       message: issue.message,
     }));
