@@ -149,6 +149,12 @@ declare module 'openai' {
 }
 
 declare module 'chromadb' {
-  const chromadb: any;
-  export default chromadb;
+  export class ChromaClient {
+    constructor(options?: Record<string, unknown>);
+    getOrCreateCollection(options: Record<string, unknown>): Promise<any>;
+  }
+
+  export class OpenAIEmbeddingFunction {
+    constructor(options: Record<string, unknown>);
+  }
 }
