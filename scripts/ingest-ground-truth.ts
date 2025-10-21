@@ -3,6 +3,7 @@ import path from 'node:path';
 import pdfParse from 'pdf-parse';
 import dotenv from 'dotenv';
 import { DocChunk, Namespace } from '../src/rag/schema';
+import { generateEmbeddings } from '../src/rag/embeddings';
 
 dotenv.config();
 
@@ -153,51 +154,24 @@ const chunkArray = <T>(items: T[], size: number): T[][] => {
 const upsertChunksToChroma = async (chunks: DocChunk[]): Promise<void> => {
   const chromaUrl = process.env.CHROMA_URL ?? DEFAULT_CHROMA_URL;
   const collectionName = process.env.CHROMA_COLLECTION ?? DEFAULT_COLLECTION;
-  const embeddingModel = process.env.CHROMA_EMBED_MODEL ?? 'text-embedding-3-small';
-  const embeddingDimensionsRaw = process.env.CHROMA_EMBED_DIMENSIONS;
-  const parsedDimensions = embeddingDimensionsRaw ? Number.parseInt(embeddingDimensionsRaw, 10) : undefined;
-  const embeddingDimensions =
-    embeddingDimensionsRaw && (parsedDimensions === undefined || Number.isNaN(parsedDimensions))
-      ? undefined
-      : parsedDimensions;
-  const apiKey = process.env.CHROMA_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.LLM_API_KEY;
-  const organizationId = process.env.OPENAI_ORG ?? process.env.CHROMA_OPENAI_ORG;
   const batchSize = Math.max(1, Number.parseInt(process.env.CHROMA_BATCH_SIZE ?? '64', 10) || 64);
 
-  if (!apiKey) {
-    console.warn(
-      'Skipping Chroma upsert because no embedding API key was found. Set CHROMA_API_KEY, OPENAI_API_KEY, or LLM_API_KEY.',
-    );
-    return;
-  }
-
-  if (embeddingDimensionsRaw && embeddingDimensions === undefined) {
-    console.warn('Ignoring invalid CHROMA_EMBED_DIMENSIONS value. Expected a number.');
-  }
-
   const chromadb = await import('chromadb');
-  const { ChromaClient, OpenAIEmbeddingFunction } = chromadb as any;
+  const { ChromaClient } = chromadb as any;
 
   const client = new ChromaClient({ path: chromaUrl });
-  const embeddingFunction = new OpenAIEmbeddingFunction({
-    openai_api_key: apiKey,
-    openai_model: embeddingModel,
-    openai_organization_id: organizationId,
-    openai_embedding_dimensions: embeddingDimensions,
-  });
-
-  const collection = await client.getOrCreateCollection({
-    name: collectionName,
-    embeddingFunction,
-  });
+  const collection = await client.getOrCreateCollection({ name: collectionName });
 
   const batches = chunkArray(chunks, batchSize);
 
   for (const batch of batches) {
+    const embeddings = await generateEmbeddings(batch.map((chunk) => chunk.content));
+
     await collection.upsert({
       ids: batch.map((chunk) => chunk.id),
       documents: batch.map((chunk) => chunk.content),
       metadatas: batch.map((chunk) => sanitizeMetadata(chunk)),
+      embeddings,
     });
   }
 

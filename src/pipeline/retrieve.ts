@@ -3,8 +3,8 @@ import { RetrievedChunk } from '../rag/schema';
 
 export type RetrieveNamespace = Namespace;
 
-export const retrieveTopChunks = (
+export const retrieveTopChunks = async (
   namespace: RetrieveNamespace,
   query: string,
   topK = 3,
-): RetrievedChunk[] => queryChunks(namespace, query, topK);
+): Promise<RetrievedChunk[]> => queryChunks(namespace, query, topK);

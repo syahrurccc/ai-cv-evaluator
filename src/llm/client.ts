@@ -1,3 +1,6 @@
+import OpenAI from 'openai';
+
+import { exponentialBackoff } from '../util/retry';
 import { CV_EVALUATION_PROMPT, FINAL_SYNTHESIS_PROMPT, PROJECT_EVALUATION_PROMPT } from './prompts';
 
 type CvEvaluationPayload = {
@@ -33,69 +36,90 @@ type SynthesisResponse = {
   overall_summary: string;
 };
 
-class MockLlmClient {
-  private hasRealProvider = Boolean(process.env.LLM_API_KEY);
+const DEFAULT_MODEL = process.env.LLM_MODEL ?? 'gpt-4o-mini';
 
-  private async completeStructured<T>(
-    _prompt: string,
-    _input: Record<string, unknown>,
-    mockResponse: T,
-  ): Promise<T> {
-    if (!this.hasRealProvider) {
-      return mockResponse;
+const buildUserInput = (input: Record<string, unknown>): string => JSON.stringify(input, null, 2);
+
+class OpenAiLlmClient {
+  private client: any = null;
+
+  private getClient(): any {
+    if (this.client) {
+      return this.client;
     }
 
-    // Placeholder for real provider integration in Phase 2.
-    return mockResponse;
+    const apiKey = process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      throw new Error('LLM API key not configured. Set LLM_API_KEY or OPENAI_API_KEY.');
+    }
+
+    this.client = new OpenAI({
+      apiKey,
+      organization: process.env.OPENAI_ORG,
+      baseURL: process.env.OPENAI_BASE_URL,
+    });
+
+    return this.client;
+  }
+
+  private async completeStructured<T>(prompt: string, input: Record<string, unknown>): Promise<T> {
+    const client = this.getClient();
+    const model = DEFAULT_MODEL;
+
+    const response = await exponentialBackoff(async (attempt) => {
+      if (attempt > 1) {
+        console.warn(`Retrying LLM call (attempt ${attempt}).`);
+      }
+
+      return client.chat.completions.create({
+        model,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: buildUserInput(input) },
+        ],
+      });
+    });
+
+    const content = response.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error('LLM response did not contain any content.');
+    }
+
+    try {
+      return JSON.parse(content) as T;
+    } catch (error) {
+      throw new Error(`Failed to parse LLM JSON response: ${(error as Error).message}`);
+    }
   }
 
   async evaluateCv(payload: CvEvaluationPayload): Promise<CvEvaluationResponse> {
-    return this.completeStructured<CvEvaluationResponse>(
-      CV_EVALUATION_PROMPT,
-      {
-        jobTitle: payload.jobTitle,
-        cvText: payload.cvText,
-        context: payload.context,
-      },
-      {
-        cv_match_rate: 72,
-        cv_feedback:
-          'The candidate demonstrates relevant experience in building evaluation systems but could highlight measurable impact more clearly.',
-      },
-    );
+    return this.completeStructured<CvEvaluationResponse>(CV_EVALUATION_PROMPT, {
+      jobTitle: payload.jobTitle,
+      cvText: payload.cvText,
+      context: payload.context,
+    });
   }
 
   async evaluateProject(payload: ProjectEvaluationPayload): Promise<ProjectEvaluationResponse> {
-    return this.completeStructured<ProjectEvaluationResponse>(
-      PROJECT_EVALUATION_PROMPT,
-      {
-        projectText: payload.projectText,
-        context: payload.context,
-      },
-      {
-        project_score: 78,
-        project_feedback:
-          'The project outlines a thoughtful approach with solid experimentation but should expand on business outcomes and stakeholder alignment.',
-      },
-    );
+    return this.completeStructured<ProjectEvaluationResponse>(PROJECT_EVALUATION_PROMPT, {
+      projectText: payload.projectText,
+      context: payload.context,
+    });
   }
 
   async synthesize(payload: SynthesisPayload): Promise<SynthesisResponse> {
-    return this.completeStructured<SynthesisResponse>(
-      FINAL_SYNTHESIS_PROMPT,
-      {
-        jobTitle: payload.jobTitle,
-        cvMatchRate: payload.cvMatchRate,
-        cvFeedback: payload.cvFeedback,
-        projectScore: payload.projectScore,
-        projectFeedback: payload.projectFeedback,
-      },
-      {
-        overall_summary:
-          'Overall, the candidate shows promise for the role with relevant skills and a strong project approach; encourage them to emphasize quantifiable results in future discussions.',
-      },
-    );
+    return this.completeStructured<SynthesisResponse>(FINAL_SYNTHESIS_PROMPT, {
+      jobTitle: payload.jobTitle,
+      cvMatchRate: payload.cvMatchRate,
+      cvFeedback: payload.cvFeedback,
+      projectScore: payload.projectScore,
+      projectFeedback: payload.projectFeedback,
+    });
   }
 }
 
-export const llmClient = new MockLlmClient();
+export const llmClient = new OpenAiLlmClient();

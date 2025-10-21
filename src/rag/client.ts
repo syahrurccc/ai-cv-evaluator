@@ -1,144 +1,118 @@
+import { ChromaClient } from 'chromadb';
+
+import { generateEmbeddings } from './embeddings';
 import { DocChunk, RetrievedChunk, Namespace } from './schema';
 
-type ChunkInput = Omit<DocChunk, 'id' | 'namespace'> & { id?: string };
+type ChunkInput = Omit<DocChunk, 'namespace'> & { namespace?: Namespace };
 
-type SeedData = Record<Namespace, ChunkInput[]>;
+const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth';
+const DEFAULT_CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
 
-const tokenize = (value: string): string[] =>
-  value
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const computeScore = (queryTokens: string[], content: string): number => {
-  if (!content.trim()) {
+const normalizeMetadata = (namespace: Namespace, metadata: unknown): Record<string, unknown> => {
+  const base: Record<string, unknown> = { namespace };
+
+  if (isPlainObject(metadata)) {
+    Object.entries(metadata).forEach(([key, value]) => {
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        base[key] = value;
+      }
+    });
+  }
+
+  return base;
+};
+
+const normalizeScore = (distance: number | undefined): number => {
+  if (typeof distance !== 'number' || Number.isNaN(distance)) {
     return 0;
   }
 
-  const contentTokens = tokenize(content);
-  const tokenSet = new Set(contentTokens);
-
-  let score = 0;
-  queryTokens.forEach((token) => {
-    if (tokenSet.has(token)) {
-      score += 1;
-    }
-  });
-
-  return score;
+  return 1 / (1 + Math.max(distance, 0));
 };
 
-class InMemoryRagClient {
-  private chunksByNamespace = new Map<Namespace, DocChunk[]>();
+class ChromaRagClient {
+  private readonly chromaUrl: string = DEFAULT_CHROMA_URL;
 
-  constructor(seed?: SeedData) {
-    if (seed) {
-      Object.entries(seed).forEach(([namespace, chunks]) => {
-        this.upsert(namespace as Namespace, chunks);
+  private readonly collectionName: string = DEFAULT_COLLECTION;
+
+  private readonly client: ChromaClient;
+
+  private collectionPromise: Promise<any> | null = null;
+
+  constructor() {
+    this.client = new ChromaClient({ path: this.chromaUrl });
+  }
+
+  private async getCollection(): Promise<any> {
+    if (!this.collectionPromise) {
+      this.collectionPromise = this.client.getOrCreateCollection({
+        name: this.collectionName,
       });
     }
+
+    return this.collectionPromise;
   }
 
-  upsert(namespace: Namespace, chunkInputs: ChunkInput[]): void {
-    const existing = this.chunksByNamespace.get(namespace) ?? [];
-    const nextChunks = [...existing];
+  async upsert(namespace: Namespace, chunkInputs: ChunkInput[]): Promise<void> {
+    if (!chunkInputs.length) {
+      return;
+    }
 
-    chunkInputs.forEach((input, index) => {
-      const chunk: DocChunk = {
-        id: input.id ?? `${namespace}_${existing.length + index + 1}`,
-        namespace,
-        content: input.content,
-        metadata: input.metadata,
-      };
+    const collection = await this.getCollection();
 
-      const foundIndex = nextChunks.findIndex((item) => item.id === chunk.id);
-      if (foundIndex >= 0) {
-        nextChunks[foundIndex] = chunk;
-      } else {
-        nextChunks.push(chunk);
-      }
+    const ids = chunkInputs.map((chunk, index) => chunk.id ?? `${namespace}_${Date.now()}_${index}`);
+    const documents = chunkInputs.map((chunk) => chunk.content ?? '');
+    const metadatas = chunkInputs.map((chunk) => normalizeMetadata(namespace, chunk.metadata));
+
+    const embeddings = await generateEmbeddings(documents);
+
+    await collection.upsert({
+      ids,
+      documents,
+      metadatas,
+      embeddings,
+    });
+  }
+
+  async query(namespace: Namespace, query: string, topK = 3): Promise<RetrievedChunk[]> {
+    if (!query.trim()) {
+      return [];
+    }
+
+    const collection = await this.getCollection();
+    const result = await collection.query({
+      queryTexts: [query],
+      nResults: topK,
+      where: { namespace },
     });
 
-    this.chunksByNamespace.set(namespace, nextChunks);
-  }
+    const documents = (result?.documents?.[0] ?? []) as string[];
+    const ids = (result?.ids?.[0] ?? []) as string[];
+    const metadatas = (result?.metadatas?.[0] ?? []) as Record<string, unknown>[];
+    const distances = (result?.distances?.[0] ?? []) as number[];
 
-  query(namespace: Namespace, query: string, topK = 3): RetrievedChunk[] {
-    const chunks = this.chunksByNamespace.get(namespace) ?? [];
-    const tokens = tokenize(query);
-
-    const scored = chunks
-      .map<RetrievedChunk>((chunk) => ({
-        ...chunk,
-        score: tokens.length ? computeScore(tokens, chunk.content) : 0,
-      }))
-      .filter((chunk) => chunk.score > 0 || tokens.length === 0)
-      .sort((a, b) => b.score - a.score);
-
-    return scored.slice(0, topK);
+    return ids.map<RetrievedChunk>((id, index) => ({
+      id,
+      namespace: (metadatas[index]?.namespace as Namespace) ?? namespace,
+      content: documents[index] ?? '',
+      metadata: metadatas[index],
+      score: normalizeScore(distances[index]),
+    }));
   }
 }
 
-const seedData: SeedData = {
-  job_description: [
-    {
-      id: 'jd_1',
-      content:
-        'We are seeking an AI engineer to build CV evaluation pipelines and collaborate with product teams.',
-    },
-    {
-      id: 'jd_2',
-      content:
-        'Responsibilities include designing retrieval augmented generation workflows and delivering hiring insights.',
-    },
-  ],
-  case_study_brief: [
-    {
-      id: 'brief_1',
-      content:
-        'Analyze the provided project report to determine solution quality, clarity of communication, and technical depth.',
-    },
-    {
-      id: 'brief_2',
-      content:
-        'Emphasize candidate ability to reason about trade-offs and demonstrate impact in their project delivery.',
-    },
-  ],
-  cv_rubric: [
-    {
-      id: 'cv_rubric_1',
-      content:
-        'Score the CV on alignment with job requirements, relevant experience, and communication clarity on achievements.',
-    },
-    {
-      id: 'cv_rubric_2',
-      content:
-        'Highlight concrete metrics, leadership signals, and collaboration with cross-functional stakeholders.',
-    },
-  ],
-  project_rubric: [
-    {
-      id: 'project_rubric_1',
-      content:
-        'Evaluate the project on problem understanding, solution design, experimentation rigor, and measurable outcomes.',
-    },
-    {
-      id: 'project_rubric_2',
-      content:
-        'Call out strengths, gaps, and next steps the candidate should take to improve future case studies.',
-    },
-  ],
-};
+const ragClient = new ChromaRagClient();
 
-export const ragClient = new InMemoryRagClient(seedData);
-
-export const upsertChunks = (namespace: Namespace, chunkInputs: ChunkInput[]): void => {
+export const upsertChunks = (namespace: Namespace, chunkInputs: ChunkInput[]): Promise<void> =>
   ragClient.upsert(namespace, chunkInputs);
-};
 
 export const queryChunks = (
   namespace: Namespace,
   query: string,
   topK?: number,
-): RetrievedChunk[] => ragClient.query(namespace, query, topK);
+): Promise<RetrievedChunk[]> => ragClient.query(namespace, query, topK);
 
 export type { Namespace };

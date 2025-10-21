@@ -59,10 +59,12 @@ const enqueueJob = (jobId: string, payload: EvaluatePayload): void => {
         parsePdf(projectFilePath),
       ]);
 
-      const jobDescriptionContext = [
-        ...retrieveTopChunks('job_description', payload.job_title, 3),
-        ...retrieveTopChunks('cv_rubric', payload.job_title, 3),
-      ];
+      const [jobDescriptionChunks, cvRubricChunks] = await Promise.all([
+        retrieveTopChunks('job_description', payload.job_title, 3),
+        retrieveTopChunks('cv_rubric', payload.job_title, 3),
+      ]);
+
+      const jobDescriptionContext = [...jobDescriptionChunks, ...cvRubricChunks];
 
       const cvEvaluation = await evaluateCv({
         jobTitle: payload.job_title,
@@ -70,10 +72,12 @@ const enqueueJob = (jobId: string, payload: EvaluatePayload): void => {
         context: jobDescriptionContext,
       });
 
-      const projectContext = [
-        ...retrieveTopChunks('case_study_brief', payload.job_title, 3),
-        ...retrieveTopChunks('project_rubric', payload.job_title, 3),
-      ];
+      const [briefChunks, projectRubricChunks] = await Promise.all([
+        retrieveTopChunks('case_study_brief', payload.job_title, 3),
+        retrieveTopChunks('project_rubric', payload.job_title, 3),
+      ]);
+
+      const projectContext = [...briefChunks, ...projectRubricChunks];
 
       const projectEvaluation = await evaluateProject({
         projectText: projectDocument.text,
