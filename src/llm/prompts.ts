@@ -2,14 +2,14 @@ export const CV_EVALUATION_PROMPT = `You are an assistant that evaluates a candi
 Use the provided job description and rubric to guide your assessment.
 Respond ONLY with valid JSON following this schema:
 {
-  "cv_match_rate": <number 0-100>,
+  "cv_match_rate": <number between 0.00 and 1.00 with two decimal places, e.g. 0.72>,
   "cv_feedback": "<detailed feedback>"
 }`;
 
 export const PROJECT_EVALUATION_PROMPT = `You assess a candidate's project report against a case study brief and rubric.
 Respond ONLY with valid JSON following this schema:
 {
-  "project_score": <number 0-100>,
+  "project_score": <number between 0.00 and 1.00 with two decimal places, e.g. 0.76>,
   "project_feedback": "<detailed feedback>"
 }`;
 

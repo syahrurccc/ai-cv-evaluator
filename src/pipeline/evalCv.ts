@@ -22,6 +22,9 @@ export type CvEvaluationResult = {
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
 
+const toTwoDecimals = (value: number): number =>
+  Math.round(value * 100) / 100;
+
 export const evaluateCv = async ({
   jobTitle,
   cvText,
@@ -34,7 +37,9 @@ export const evaluateCv = async ({
   });
 
   const parsed = cvEvaluationSchema.parse(response);
-  const matchRate = clamp(Number.isFinite(parsed.cv_match_rate) ? parsed.cv_match_rate : 0, 0, 100);
+  const matchRate = toTwoDecimals(
+    clamp(Number.isFinite(parsed.cv_match_rate) ? parsed.cv_match_rate : 0, 0, 1),
+  );
 
   return {
     matchRate,

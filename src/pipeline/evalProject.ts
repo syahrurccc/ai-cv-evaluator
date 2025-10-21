@@ -21,6 +21,9 @@ export type ProjectEvaluationResult = {
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
 
+const toTwoDecimals = (value: number): number =>
+  Math.round(value * 100) / 100;
+
 export const evaluateProject = async ({
   projectText,
   context,
@@ -31,7 +34,9 @@ export const evaluateProject = async ({
   });
 
   const parsed = projectEvaluationSchema.parse(response);
-  const score = clamp(Number.isFinite(parsed.project_score) ? parsed.project_score : 0, 0, 100);
+  const score = toTwoDecimals(
+    clamp(Number.isFinite(parsed.project_score) ? parsed.project_score : 0, 0, 1),
+  );
 
   return {
     score,
