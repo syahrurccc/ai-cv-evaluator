@@ -5,6 +5,7 @@ type BackoffOptions = {
   factor?: number;
   jitter?: boolean;
   onRetry?: (error: unknown, attempt: number, delayMs: number) => void;
+  shouldRetry?: (error: unknown, attempt: number) => boolean;
 };
 
 const wait = (ms: number): Promise<void> =>
@@ -23,6 +24,7 @@ export const exponentialBackoff = async <T>(
     factor = 2,
     jitter = true,
     onRetry,
+    shouldRetry,
   } = options;
 
   let attempt = 0;
@@ -35,6 +37,10 @@ export const exponentialBackoff = async <T>(
       return await action(attempt);
     } catch (error) {
       if (attempt >= maxAttempts) {
+        throw error;
+      }
+
+      if (typeof shouldRetry === 'function' && !shouldRetry(error, attempt)) {
         throw error;
       }
 
