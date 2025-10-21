@@ -1,0 +1,88 @@
+openapi: 3.1.0
+info:
+  title: AI Job Application Evaluator
+  version: 0.1.0
+paths:
+  /upload:
+    post:
+      summary: Upload candidate PDFs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                cv: { type: string, format: binary }
+                project_report: { type: string, format: binary }
+              required: [cv, project_report]
+      responses:
+        "201":
+          description: Stored file IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+  /evaluate:
+    post:
+      summary: Start async evaluation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                job_title: { type: string }
+                cv_file_id: { type: string }
+                project_file_id: { type: string }
+              required: [job_title, cv_file_id, project_file_id]
+      responses:
+        "202":
+          description: Job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string, enum: [queued] }
+  /result/{id}:
+    get:
+      summary: Get job status or final result
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Status/Result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      id: { type: string }
+                      status: { type: string, enum: [queued, processing] }
+                  - type: object
+                    properties:
+                      id: { type: string }
+                      status: { type: string, enum: [completed] }
+                      result:
+                        type: object
+                        properties:
+                          cv_match_rate: { type: number, minimum: 0, maximum: 1 }
+                          cv_feedback: { type: string }
+                          project_score: { type: number, minimum: 0, maximum: 5 }
+                          project_feedback: { type: string }
+                          overall_summary: { type: string }
