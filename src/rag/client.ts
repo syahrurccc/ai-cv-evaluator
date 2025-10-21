@@ -40,6 +40,10 @@ class ChromaRagClient {
 
   private readonly client: ChromaClient;
 
+  private readonly embeddingFunction = {
+    generate: (texts: string[]) => generateEmbeddings(texts),
+  };
+
   private collectionPromise: Promise<any> | null = null;
 
   constructor() {
@@ -50,6 +54,7 @@ class ChromaRagClient {
     if (!this.collectionPromise) {
       this.collectionPromise = this.client.getOrCreateCollection({
         name: this.collectionName,
+        embeddingFunction: this.embeddingFunction,
       });
     }
 
@@ -83,8 +88,10 @@ class ChromaRagClient {
     }
 
     const collection = await this.getCollection();
+    const [queryEmbedding] = await generateEmbeddings([query]);
     const result = await collection.query({
       queryTexts: [query],
+      queryEmbeddings: queryEmbedding ? [queryEmbedding] : undefined,
       nResults: topK,
       where: { namespace },
     });
