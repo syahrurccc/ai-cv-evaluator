@@ -3,7 +3,6 @@ import path from 'node:path';
 import pdfParse from 'pdf-parse';
 import dotenv from 'dotenv';
 import { DocChunk, Namespace } from '../src/rag/schema';
-import { generateEmbeddings } from '../src/rag/embeddings';
 
 dotenv.config();
 
@@ -14,7 +13,7 @@ const MIN_CHUNK_SIZE = 200; // avoid writing extremely small slices
 const DATA_DIR = path.resolve('.data');
 const DOCS_DIR = path.resolve('docs');
 const OUTPUT_PATH = path.join(DATA_DIR, 'ground-truth.jsonl');
-const DEFAULT_COLLECTION = 'ground-truth';
+const DEFAULT_COLLECTION = 'ground-truth-minilm';
 const DEFAULT_CHROMA_URL = 'http://localhost:8000';
 
 type GroundTruthSource = Namespace;
@@ -162,16 +161,15 @@ const upsertChunksToChroma = async (chunks: DocChunk[]): Promise<void> => {
   const client = new ChromaClient({ path: chromaUrl });
   const collection = await client.getOrCreateCollection({ name: collectionName });
 
+  console.info(`[INGEST] CHROMA_URL=${chromaUrl} CHROMA_COLLECTION=${collectionName}`);
+
   const batches = chunkArray(chunks, batchSize);
 
   for (const batch of batches) {
-    const embeddings = await generateEmbeddings(batch.map((chunk) => chunk.content));
-
     await collection.upsert({
       ids: batch.map((chunk) => chunk.id),
       documents: batch.map((chunk) => chunk.content),
       metadatas: batch.map((chunk) => sanitizeMetadata(chunk)),
-      embeddings,
     });
   }
 

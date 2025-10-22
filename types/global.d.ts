@@ -158,3 +158,11 @@ declare module 'chromadb' {
     constructor(options: Record<string, unknown>);
   }
 }
+
+declare module '@chroma-core/default-embed' {
+  class DefaultEmbeddingFunction {
+    constructor();
+  }
+
+  export { DefaultEmbeddingFunction };
+}

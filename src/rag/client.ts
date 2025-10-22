@@ -1,11 +1,10 @@
 import { ChromaClient } from 'chromadb';
-
-import { generateEmbeddings } from './embeddings';
+import { DefaultEmbeddingFunction } from '@chroma-core/default-embed';
 import { DocChunk, RetrievedChunk, Namespace } from './schema';
 
 type ChunkInput = Omit<DocChunk, 'namespace'> & { namespace?: Namespace };
 
-const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth-nomic';
+const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth-minilm';
 const DEFAULT_CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -40,10 +39,6 @@ class ChromaRagClient {
 
   private readonly client: ChromaClient;
 
-  private readonly embeddingFunction = {
-    generate: (texts: string[]) => generateEmbeddings(texts),
-  };
-
   private collectionPromise: Promise<any> | null = null;
 
   constructor() {
@@ -54,7 +49,7 @@ class ChromaRagClient {
     if (!this.collectionPromise) {
       this.collectionPromise = this.client.getOrCreateCollection({
         name: this.collectionName,
-        embeddingFunction: this.embeddingFunction,
+        embeddingFunction: new DefaultEmbeddingFunction(),
       });
     }
 
@@ -72,13 +67,10 @@ class ChromaRagClient {
     const documents = chunkInputs.map((chunk) => chunk.content ?? '');
     const metadatas = chunkInputs.map((chunk) => normalizeMetadata(namespace, chunk.metadata));
 
-    const embeddings = await generateEmbeddings(documents);
-
     await collection.upsert({
       ids,
       documents,
       metadatas,
-      embeddings,
     });
   }
 
@@ -88,16 +80,10 @@ class ChromaRagClient {
     }
 
     const collection = await this.getCollection();
-    const [queryEmbedding] = await generateEmbeddings([query]);
-
-    if (!queryEmbedding?.length) {
-      return [];
-    }
-
     const result = await collection.query({
-      queryEmbeddings: [queryEmbedding],
+      queryTexts: [query],
       nResults: topK,
-      where: { namespace },
+      where: { namespace: { $eq: namespace } },
       include: ['documents', 'metadatas', 'distances', 'ids'],
     });
 
