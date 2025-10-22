@@ -89,11 +89,16 @@ class ChromaRagClient {
 
     const collection = await this.getCollection();
     const [queryEmbedding] = await generateEmbeddings([query]);
+
+    if (!queryEmbedding?.length) {
+      return [];
+    }
+
     const result = await collection.query({
-      queryTexts: [query],
-      queryEmbeddings: queryEmbedding ? [queryEmbedding] : undefined,
+      queryEmbeddings: [queryEmbedding],
       nResults: topK,
       where: { namespace },
+      include: ['documents', 'metadatas', 'distances', 'ids'],
     });
 
     const documents = (result?.documents?.[0] ?? []) as string[];
