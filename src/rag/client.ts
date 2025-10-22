@@ -5,7 +5,7 @@ import { DocChunk, RetrievedChunk, Namespace } from './schema';
 
 type ChunkInput = Omit<DocChunk, 'namespace'> & { namespace?: Namespace };
 
-const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth';
+const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth-nomic';
 const DEFAULT_CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
