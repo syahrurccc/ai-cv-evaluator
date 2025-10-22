@@ -36,11 +36,12 @@ type SynthesisResponse = {
   overall_summary: string;
 };
 
-const DEFAULT_MODEL = process.env.LLM_MODEL ?? 'gpt-4o-mini';
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+const OPENROUTER_MODEL = 'mistralai/mistral-small-3.2-24b-instruct:free';
 
 const buildUserInput = (input: Record<string, unknown>): string => JSON.stringify(input, null, 2);
 
-class OpenAiLlmClient {
+class OpenRouterLlmClient {
   private client: any = null;
 
   private getClient(): any {
@@ -48,16 +49,15 @@ class OpenAiLlmClient {
       return this.client;
     }
 
-    const apiKey = process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
-      throw new Error('LLM API key not configured. Set LLM_API_KEY or OPENAI_API_KEY.');
+      throw new Error('LLM API key not configured. Set OPENAI_API_KEY to your OpenRouter token.');
     }
 
     this.client = new OpenAI({
       apiKey,
-      organization: process.env.OPENAI_ORG,
-      baseURL: process.env.OPENAI_BASE_URL,
+      baseURL: OPENROUTER_BASE_URL,
     });
 
     return this.client;
@@ -65,7 +65,7 @@ class OpenAiLlmClient {
 
   private async completeStructured<T>(prompt: string, input: Record<string, unknown>): Promise<T> {
     const client = this.getClient();
-    const model = DEFAULT_MODEL;
+    const model = OPENROUTER_MODEL;
 
     const response = await exponentialBackoff(async (attempt) => {
       if (attempt > 1) {
@@ -122,4 +122,4 @@ class OpenAiLlmClient {
   }
 }
 
-export const llmClient = new OpenAiLlmClient();
+export const llmClient = new OpenRouterLlmClient();

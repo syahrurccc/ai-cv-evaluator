@@ -6,7 +6,8 @@ AI-assisted evaluation pipeline for CVs and project reports. The service accepts
 - Node.js 18+
 - npm
 - Local [Chroma](https://docs.trychroma.com/) server running (defaults to `http://localhost:8000`)
-- OpenAI API key with access to the `text-embedding-3-large` and chat completion models (set as `LLM_API_KEY`)
+- Local `nomic-embed-text` embedding service (e.g., via [Ollama](https://ollama.com/)) listening on `http://localhost:11434`
+- OpenRouter API key with access to `mistralai/mistral-small-3.2-24b-instruct:free` (set as `OPENAI_API_KEY`)
 
 ## Setup
 1. Install dependencies:

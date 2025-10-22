@@ -1,136 +1,65 @@
-import OpenAI from 'openai';
-
 import { exponentialBackoff } from '../util/retry';
 
 type EmbeddingBatchOptions = {
   batchSize?: number;
 };
 
-type ErrorInfo = {
-  status?: number;
-  code?: string;
-  message?: string;
-};
+type RequestError = Error & { status?: number; detail?: string };
 
 const DEFAULT_MAX_ATTEMPTS = Math.max(1, Number.parseInt(process.env.CHROMA_EMBED_MAX_ATTEMPTS ?? '5', 10) || 5);
-const DEFAULT_MODEL = process.env.CHROMA_EMBED_MODEL ?? 'text-embedding-3-large';
 const DEFAULT_BATCH_SIZE = Math.max(1, Number.parseInt(process.env.CHROMA_BATCH_SIZE ?? '64', 10) || 64);
+const DEFAULT_MODEL = 'nomic-embed-text';
+const DEFAULT_BASE_URL = process.env.NOMIC_EMBED_URL ?? 'http://localhost:11434';
 
-const extractErrorInfo = (error: unknown): ErrorInfo => {
-  const info: ErrorInfo = {};
-
-  if (!error) {
-    return info;
+const buildEndpoint = (baseUrl: string): string => {
+  try {
+    const url = new URL(baseUrl);
+    url.pathname = '/api/embeddings';
+    url.search = '';
+    return url.toString();
+  } catch (error) {
+    throw new Error(`Invalid embedding service URL "${baseUrl}": ${(error as Error).message}`);
   }
-
-  if (error instanceof Error) {
-    info.message = error.message;
-  }
-
-  if (typeof error !== 'object') {
-    return info;
-  }
-
-  const maybeError = error as {
-    status?: number;
-    code?: string;
-    message?: string;
-    response?: { status?: number; data?: { error?: unknown } };
-    error?: unknown;
-  };
-
-  if (typeof maybeError.status === 'number') {
-    info.status = maybeError.status;
-  }
-
-  if (typeof maybeError.code === 'string') {
-    info.code = maybeError.code;
-  }
-
-  if (typeof maybeError.message === 'string') {
-    info.message = maybeError.message;
-  }
-
-  const response = maybeError.response;
-  if (response) {
-    if (typeof response.status === 'number' && typeof info.status === 'undefined') {
-      info.status = response.status;
-    }
-
-    const responseError = response.data?.error;
-    if (responseError && typeof responseError === 'object') {
-      const nested = responseError as { status?: number; code?: string; type?: string; message?: string };
-      if (typeof nested.status === 'number' && typeof info.status === 'undefined') {
-        info.status = nested.status;
-      }
-      if (typeof nested.code === 'string' && !info.code) {
-        info.code = nested.code;
-      } else if (typeof nested.type === 'string' && !info.code) {
-        info.code = nested.type;
-      }
-      if (typeof nested.message === 'string') {
-        info.message = nested.message;
-      }
-    }
-  }
-
-  const nestedError = maybeError.error;
-  if (nestedError && typeof nestedError === 'object') {
-    const nestedInfo = extractErrorInfo(nestedError);
-    if (typeof info.status === 'undefined' && typeof nestedInfo.status !== 'undefined') {
-      info.status = nestedInfo.status;
-    }
-    if (!info.code && nestedInfo.code) {
-      info.code = nestedInfo.code;
-    }
-    if (nestedInfo.message) {
-      info.message = nestedInfo.message;
-    }
-  }
-
-  return info;
 };
 
-const isQuotaError = (info: ErrorInfo): boolean => {
-  const message = info.message?.toLowerCase() ?? '';
-  return info.code === 'insufficient_quota' || message.includes('insufficient quota') || message.includes('exceeded your current quota');
+const getStatus = (error: unknown): number | undefined => {
+  if (error && typeof error === 'object' && 'status' in error) {
+    const status = (error as { status?: unknown }).status;
+    if (typeof status === 'number') {
+      return status;
+    }
+  }
+  return undefined;
+};
+
+const getDetail = (error: unknown): string | undefined => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object' && 'detail' in error) {
+    const detail = (error as { detail?: unknown }).detail;
+    if (typeof detail === 'string') {
+      return detail;
+    }
+  }
+
+  return undefined;
 };
 
 class EmbeddingGenerator {
-  private client: any = null;
-
-  private readonly model: string;
+  private readonly model: string = DEFAULT_MODEL;
 
   private readonly batchSize: number;
 
   private readonly maxAttempts: number;
 
+  private readonly endpoint: string;
+
   constructor({ batchSize }: EmbeddingBatchOptions = {}) {
-    this.model = DEFAULT_MODEL;
     this.batchSize = Math.max(1, batchSize ?? DEFAULT_BATCH_SIZE);
     this.maxAttempts = DEFAULT_MAX_ATTEMPTS;
-  }
-
-  private getClient(): any {
-    if (this.client) {
-      return this.client;
-    }
-
-    const apiKey = process.env.CHROMA_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.LLM_API_KEY;
-
-    if (!apiKey) {
-      throw new Error(
-        'No API key configured for embeddings. Set CHROMA_API_KEY, OPENAI_API_KEY, or LLM_API_KEY before running ingestion.',
-      );
-    }
-
-    this.client = new OpenAI({
-      apiKey,
-      organization: process.env.OPENAI_ORG ?? process.env.CHROMA_OPENAI_ORG,
-      baseURL: process.env.OPENAI_BASE_URL ?? process.env.CHROMA_OPENAI_BASE_URL,
-    });
-
-    return this.client;
+    this.endpoint = buildEndpoint(DEFAULT_BASE_URL);
   }
 
   private chunkTexts(texts: string[]): string[][] {
@@ -144,12 +73,9 @@ class EmbeddingGenerator {
   }
 
   private shouldRetry(error: unknown): boolean {
-    const info = extractErrorInfo(error);
+    const status = getStatus(error);
 
-    if (info.status && info.status >= 400 && info.status < 500) {
-      if (info.status === 429) {
-        return !isQuotaError(info);
-      }
+    if (typeof status === 'number' && status >= 400 && status < 500 && status !== 429) {
       return false;
     }
 
@@ -157,37 +83,19 @@ class EmbeddingGenerator {
   }
 
   private logRetry(error: unknown, attempt: number, delay: number): void {
-    const info = extractErrorInfo(error);
-    const parts: string[] = [];
+    const status = getStatus(error);
+    const detail = getDetail(error) ?? 'Unknown error';
+    const prefix = typeof status === 'number' ? `status ${status} — ` : '';
 
-    if (info.status) {
-      parts.push(`status ${info.status}`);
-    }
-
-    if (info.code) {
-      parts.push(info.code);
-    }
-
-    const detail = info.message ?? (error instanceof Error ? error.message : undefined) ?? 'Unknown error';
-    const reason = parts.length ? `${parts.join(' ')} — ${detail}` : detail;
-
-    console.warn(`Embedding request attempt ${attempt} failed (${reason}). Retrying in ${delay}ms.`);
+    console.warn(`Embedding request attempt ${attempt} failed (${prefix}${detail}). Retrying in ${delay}ms.`);
   }
 
   private buildEmbeddingError(error: unknown): Error {
-    const info = extractErrorInfo(error);
-    const segments: string[] = ['Embedding request failed'];
-
-    if (info.status) {
-      segments.push(`(status ${info.status})`);
-    }
-
-    if (info.code) {
-      segments.push(`[${info.code}]`);
-    }
-
-    const detail = info.message ?? (error instanceof Error ? error.message : undefined) ?? 'Unknown error';
-    const message = `${segments.join(' ')}: ${detail}`;
+    const status = getStatus(error);
+    const detail = getDetail(error) ?? 'Unknown error';
+    const message = typeof status === 'number'
+      ? `Embedding request failed (status ${status}): ${detail}`
+      : `Embedding request failed: ${detail}`;
     const embeddingError = new Error(message);
 
     (embeddingError as Error & { cause?: unknown }).cause = error instanceof Error ? error : undefined;
@@ -195,25 +103,74 @@ class EmbeddingGenerator {
     return embeddingError;
   }
 
+  private normalizeEmbeddingVector(values: unknown): number[] {
+    if (!Array.isArray(values)) {
+      throw new Error('Embedding response did not include an array of numbers.');
+    }
+
+    return values.map((value, index) => {
+      const numeric = typeof value === 'number' ? value : Number(value);
+      if (Number.isNaN(numeric)) {
+        throw new Error(`Embedding value at index ${index} is not a valid number.`);
+      }
+      return numeric;
+    });
+  }
+
+  private async requestBatch(batch: string[]): Promise<number[][]> {
+    const response = await fetch(this.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        input: batch,
+      }),
+    });
+
+    if (!response.ok) {
+      const detailText = await response.text();
+      const error = new Error(detailText || response.statusText) as RequestError;
+      error.status = response.status;
+      error.detail = detailText || response.statusText;
+      throw error;
+    }
+
+    let data: unknown;
+
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw new Error(`Failed to parse embedding response JSON: ${(error as Error).message}`);
+    }
+
+    const embeddings = (data as { embeddings?: unknown })?.embeddings;
+
+    if (!Array.isArray(embeddings)) {
+      throw new Error('Embedding response missing "embeddings" array.');
+    }
+
+    if (embeddings.length !== batch.length) {
+      throw new Error('Embedding response count does not match input batch size.');
+    }
+
+    return embeddings.map((values) => this.normalizeEmbeddingVector(values));
+  }
+
   async generate(texts: string[]): Promise<number[][]> {
     if (!texts.length) {
       return [];
     }
-
-    const client = this.getClient();
     const batches = this.chunkTexts(texts);
     const embeddings: number[][] = [];
 
     for (const batch of batches) {
-      let response: any;
+      let batchEmbeddings: number[][];
 
       try {
-        response = await exponentialBackoff(
-          () =>
-            client.embeddings.create({
-              model: this.model,
-              input: batch,
-            }),
+        batchEmbeddings = await exponentialBackoff(
+          () => this.requestBatch(batch),
           {
             maxAttempts: this.maxAttempts,
             onRetry: (error, attempt, delay) => this.logRetry(error, attempt, delay),
@@ -224,9 +181,7 @@ class EmbeddingGenerator {
         throw this.buildEmbeddingError(error);
       }
 
-      response.data.forEach((item: any) => {
-        embeddings.push(item.embedding as number[]);
-      });
+      embeddings.push(...batchEmbeddings);
     }
 
     return embeddings;
