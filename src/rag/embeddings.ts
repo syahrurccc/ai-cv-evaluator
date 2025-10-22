@@ -118,44 +118,42 @@ class EmbeddingGenerator {
   }
 
   private async requestBatch(batch: string[]): Promise<number[][]> {
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.model,
-        input: batch,
-      }),
-    });
+    const embeddings: number[][] = [];
 
-    if (!response.ok) {
-      const detailText = await response.text();
-      const error = new Error(detailText || response.statusText) as RequestError;
-      error.status = response.status;
-      error.detail = detailText || response.statusText;
-      throw error;
+    for (const text of batch) {
+      const response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          prompt: text,
+        }),
+      });
+
+      if (!response.ok) {
+        const detailText = await response.text();
+        const error = new Error(detailText || response.statusText) as RequestError;
+        error.status = response.status;
+        error.detail = detailText || response.statusText;
+        throw error;
+      }
+
+      let data: unknown;
+
+      try {
+        data = await response.json();
+      } catch (error) {
+        throw new Error(`Failed to parse embedding response JSON: ${(error as Error).message}`);
+      }
+
+      const embedding = (data as { embedding?: unknown })?.embedding;
+
+      embeddings.push(this.normalizeEmbeddingVector(embedding));
     }
 
-    let data: unknown;
-
-    try {
-      data = await response.json();
-    } catch (error) {
-      throw new Error(`Failed to parse embedding response JSON: ${(error as Error).message}`);
-    }
-
-    const embeddings = (data as { embeddings?: unknown })?.embeddings;
-
-    if (!Array.isArray(embeddings)) {
-      throw new Error('Embedding response missing "embeddings" array.');
-    }
-
-    if (embeddings.length !== batch.length) {
-      throw new Error('Embedding response count does not match input batch size.');
-    }
-
-    return embeddings.map((values) => this.normalizeEmbeddingVector(values));
+    return embeddings;
   }
 
   async generate(texts: string[]): Promise<number[][]> {
