@@ -166,3 +166,16 @@ declare module '@chroma-core/default-embed' {
 
   export { DefaultEmbeddingFunction };
 }
+
+declare module '@chroma-core/ollama' {
+  type OllamaEmbeddingOptions = {
+    url?: string;
+    model?: string;
+  };
+
+  class OllamaEmbeddingFunction {
+    constructor(options?: OllamaEmbeddingOptions);
+  }
+
+  export { OllamaEmbeddingFunction };
+}

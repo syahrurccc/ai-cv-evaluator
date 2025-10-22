@@ -1,11 +1,13 @@
 import { ChromaClient } from 'chromadb';
-import { DefaultEmbeddingFunction } from '@chroma-core/default-embed';
+import { OllamaEmbeddingFunction } from '@chroma-core/ollama';
 import { DocChunk, RetrievedChunk, Namespace } from './schema';
 
 type ChunkInput = Omit<DocChunk, 'namespace'> & { namespace?: Namespace };
 
-const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth-minilm';
+const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth-ollama';
 const DEFAULT_CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
+const DEFAULT_OLLAMA_URL = process.env.NOMIC_EMBED_URL ?? 'http://127.0.0.1:11434/';
+const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -37,6 +39,10 @@ class ChromaRagClient {
 
   private readonly collectionName: string = DEFAULT_COLLECTION;
 
+  private readonly ollamaUrl: string = DEFAULT_OLLAMA_URL;
+
+  private readonly ollamaModel: string = DEFAULT_OLLAMA_MODEL;
+
   private readonly client: ChromaClient;
 
   private collectionPromise: Promise<any> | null = null;
@@ -45,11 +51,19 @@ class ChromaRagClient {
     this.client = new ChromaClient({ path: this.chromaUrl });
   }
 
+  private buildEmbeddingFunction(): OllamaEmbeddingFunction {
+    return new OllamaEmbeddingFunction({
+      url: this.ollamaUrl,
+      model: this.ollamaModel,
+    });
+  }
+
   private async getCollection(): Promise<any> {
     if (!this.collectionPromise) {
+      const embeddingFunction = this.buildEmbeddingFunction();
       this.collectionPromise = this.client.getOrCreateCollection({
         name: this.collectionName,
-        embeddingFunction: new DefaultEmbeddingFunction(),
+        embeddingFunction,
       });
     }
 
