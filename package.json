@@ -15,9 +15,10 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@chroma-core/default-embed": "^0.0.5",
-    "@chroma-core/ollama": "^0.0.5",
-    "chromadb": "^1.8.1",
+    "@chroma-core/default-embed": "^0.1.8",
+    "@chroma-core/ollama": "^0.1.7",
+    "chromadb": "^3.0.17",
+    "chromadb-default-embed": "^2.14.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "multer": "^1.4.5-lts.1",

@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import pdfParse from 'pdf-parse';
 import dotenv from 'dotenv';
+import { OllamaEmbeddingFunction } from '@chroma-core/ollama';
+import { ChromaClient } from 'chromadb';
 import { DocChunk, Namespace } from '../src/rag/schema';
 
 dotenv.config();
@@ -15,6 +17,8 @@ const DOCS_DIR = path.resolve('docs');
 const OUTPUT_PATH = path.join(DATA_DIR, 'ground-truth.jsonl');
 const DEFAULT_COLLECTION = 'ground-truth-ollama';
 const DEFAULT_CHROMA_URL = 'http://localhost:8000';
+const DEFAULT_MODEL = 'nomic-embed-text';
+const DEFAULT_BASE_URL = process.env.NOMIC_EMBED_URL ?? 'http://localhost:11434';
 
 type GroundTruthSource = Namespace;
 
@@ -155,11 +159,18 @@ const upsertChunksToChroma = async (chunks: DocChunk[]): Promise<void> => {
   const collectionName = process.env.CHROMA_COLLECTION ?? DEFAULT_COLLECTION;
   const batchSize = Math.max(1, Number.parseInt(process.env.CHROMA_BATCH_SIZE ?? '64', 10) || 64);
 
-  const chromadb = await import('chromadb');
-  const { ChromaClient } = chromadb as any;
-
-  const client = new ChromaClient({ path: chromaUrl });
-  const collection = await client.getOrCreateCollection({ name: collectionName });
+  const client = new ChromaClient({ url: chromaUrl });
+  const embeddingFunction = new OllamaEmbeddingFunction({
+      url: DEFAULT_BASE_URL,
+      model: DEFAULT_MODEL,
+    });
+  
+    // IMPORTANT: the very first time this collection is created,
+    // it must include embeddingFunction (or you'll get "undefined" provider).
+    const collection = await client.getOrCreateCollection({
+      name: collectionName,
+      embeddingFunction,
+    });
 
   console.info(`[INGEST] CHROMA_URL=${chromaUrl} CHROMA_COLLECTION=${collectionName} BATCH_SIZE=${batchSize}`);
 

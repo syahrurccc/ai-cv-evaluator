@@ -5,7 +5,7 @@ import { DocChunk, RetrievedChunk, Namespace } from './schema';
 type ChunkInput = Omit<DocChunk, 'namespace'> & { namespace?: Namespace };
 
 const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth-ollama';
-const DEFAULT_CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
+const DEFAULT_CHROMA_URL = process.env.CHROMA_URL ?? 'http://127.0.0.1:8000';
 const DEFAULT_OLLAMA_URL = process.env.NOMIC_EMBED_URL ?? 'http://127.0.0.1:11434/';
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text';
 
@@ -48,7 +48,7 @@ class ChromaRagClient {
   private collectionPromise: Promise<any> | null = null;
 
   constructor() {
-    this.client = new ChromaClient({ path: this.chromaUrl });
+    this.client = new ChromaClient({ url: this.chromaUrl });
   }
 
   private buildEmbeddingFunction(): OllamaEmbeddingFunction {
@@ -98,7 +98,7 @@ class ChromaRagClient {
       queryTexts: [query],
       nResults: topK,
       where: { namespace: { $eq: namespace } },
-      include: ['documents', 'metadatas', 'distances', 'ids'],
+      include: ['documents', 'metadatas', 'distances'],
     });
 
     const documents = (result?.documents?.[0] ?? []) as string[];
