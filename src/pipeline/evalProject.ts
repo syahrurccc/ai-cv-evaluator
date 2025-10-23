@@ -4,7 +4,7 @@ import { llmClient } from '../llm/client';
 import { RetrievedChunk } from '../rag/schema';
 
 const projectEvaluationSchema = z.object({
-  project_score: z.number(),
+  project_score: z.coerce.number().min(0).max(1),
   project_feedback: z.string(),
 });
 

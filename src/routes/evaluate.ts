@@ -24,22 +24,11 @@ type EvaluatePayload = {
 };
 
 type EvaluationResult = {
-  job_title: string;
-  cv: {
-    pages: number;
-    match_rate: number;
-    feedback: string;
-  };
-  project: {
-    pages: number;
-    score: number;
-    feedback: string;
-  };
-  summary: string;
-  context: {
-    job_description: string[];
-    project_brief: string[];
-  };
+  cv_match_rate: number;
+  cv_feedback: string;
+  project_score: number;
+  project_feedback: string;
+  overall_summary: string;
 };
 
 const enqueueJob = (jobId: string, payload: EvaluatePayload): void => {
@@ -91,22 +80,11 @@ const enqueueJob = (jobId: string, payload: EvaluatePayload): void => {
       });
 
       const result: EvaluationResult = {
-        job_title: payload.job_title,
-        cv: {
-          pages: cvDocument.pages,
-          match_rate: cvEvaluation.matchRate,
-          feedback: cvEvaluation.feedback,
-        },
-        project: {
-          pages: projectDocument.pages,
-          score: projectEvaluation.score,
-          feedback: projectEvaluation.feedback,
-        },
-        summary: synthesis.summary,
-        context: {
-          job_description: jobDescriptionContext.map((chunk) => chunk.content),
-          project_brief: projectContext.map((chunk) => chunk.content),
-        },
+        cv_match_rate: cvEvaluation.matchRate,
+        cv_feedback: cvEvaluation.feedback,
+        project_score: projectEvaluation.score,
+        project_feedback: projectEvaluation.feedback,
+        overall_summary: synthesis.summary
       };
 
       updateJob(jobId, {

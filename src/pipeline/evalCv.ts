@@ -4,7 +4,7 @@ import { llmClient } from '../llm/client';
 import { RetrievedChunk } from '../rag/schema';
 
 const cvEvaluationSchema = z.object({
-  cv_match_rate: z.number(),
+  cv_match_rate: z.coerce.number().min(0).max(1),
   cv_feedback: z.string(),
 });
 

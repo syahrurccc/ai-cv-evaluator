@@ -8,17 +8,17 @@ import { DocChunk, Namespace } from '../src/rag/schema';
 
 dotenv.config();
 
-const CHUNK_SIZE = 1000; // approximate tokens per chunk
+const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
-const MIN_CHUNK_SIZE = 200; // avoid writing extremely small slices
+const MIN_CHUNK_SIZE = 200;
 
 const DATA_DIR = path.resolve('.data');
 const DOCS_DIR = path.resolve('docs');
 const OUTPUT_PATH = path.join(DATA_DIR, 'ground-truth.jsonl');
-const DEFAULT_COLLECTION = 'ground-truth-ollama';
-const DEFAULT_CHROMA_URL = 'http://localhost:8000';
-const DEFAULT_MODEL = 'nomic-embed-text';
-const DEFAULT_BASE_URL = process.env.NOMIC_EMBED_URL ?? 'http://localhost:11434';
+const DEFAULT_COLLECTION = process.env.CHROMA_COLLECTION ?? 'ground-truth-ollama';
+const DEFAULT_CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
+const DEFAULT_MODEL = process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text';
+const DEFAULT_BASE_URL = process.env.OLLAMA_EMBED_URL ?? 'http://localhost:11434';
 
 type GroundTruthSource = Namespace;
 
@@ -159,14 +159,12 @@ const upsertChunksToChroma = async (chunks: DocChunk[]): Promise<void> => {
   const collectionName = process.env.CHROMA_COLLECTION ?? DEFAULT_COLLECTION;
   const batchSize = Math.max(1, Number.parseInt(process.env.CHROMA_BATCH_SIZE ?? '64', 10) || 64);
 
-  const client = new ChromaClient({ url: chromaUrl });
+  const client = new ChromaClient({ host: chromaUrl });
   const embeddingFunction = new OllamaEmbeddingFunction({
       url: DEFAULT_BASE_URL,
       model: DEFAULT_MODEL,
     });
   
-    // IMPORTANT: the very first time this collection is created,
-    // it must include embeddingFunction (or you'll get "undefined" provider).
     const collection = await client.getOrCreateCollection({
       name: collectionName,
       embeddingFunction,

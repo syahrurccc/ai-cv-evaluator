@@ -36,8 +36,8 @@ type SynthesisResponse = {
   overall_summary: string;
 };
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-const OPENROUTER_MODEL = 'mistralai/mistral-small-3.2-24b-instruct:free';
+const OPENROUTER_BASE_URL = process.env.LLM_BASE_URL ?? 'https://openrouter.ai/api/v1';
+const OPENROUTER_MODEL = process.env.LLM_MODEL ?? 'mistralai/mistral-small-3.2-24b-instruct:free';
 
 const buildUserInput = (input: Record<string, unknown>): string => JSON.stringify(input, null, 2);
 
@@ -49,10 +49,10 @@ class OpenRouterLlmClient {
       return this.client;
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.LLM_API_KEY;
 
     if (!apiKey) {
-      throw new Error('LLM API key not configured. Set OPENAI_API_KEY to your OpenRouter token.');
+      throw new Error('LLM API key not configured. Set LLM_API_KEY to your OpenRouter token.');
     }
 
     this.client = new OpenAI({
