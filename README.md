@@ -25,13 +25,6 @@ Start the development server:
 ```bash
 npm run dev
 ```
-
-Build and run with TypeScript output:
-```bash
-npm run build
-node dist/index.js
-```
-
 The server listens on `PORT` from the environment or defaults to `3000`.
 
 ## Ingesting Ground Truth
@@ -83,18 +76,12 @@ Example response when complete:
   "id": "job_...",
   "status": "completed",
   "result": {
-    "cv": {
-      "match_rate": 0.82,
-      "feedback": "..."
-    },
-    "project": {
-      "score": 0.76,
-      "feedback": "..."
-    },
-    "overall": {
-      "summary": "..."
+      "cv_match_rate": 0.82,
+      "cv_feedback": "..."
+      "project_score": 0.76,
+      "project_feedback": "..."
+      "overall_summary":
     }
-  }
 }
 ```
 
@@ -102,12 +89,3 @@ Example response when complete:
 - **Asynchronous jobs:** PDF parsing and LLM calls can take multiple seconds. Offloading work to background jobs keeps HTTP response times low and prevents client timeouts.
 - **Schema validation:** Zod schemas enforce that upstream components and LLM responses conform to expected structures, catching malformed inputs early and safeguarding downstream logic.
 - **Normalized scoring:** Scores are constrained to the `[0.00, 1.00]` range, enabling consistent comparisons across evaluations and simplifying threshold-based decisions.
-
-## Screenshots
-> Replace these placeholders with real screenshots after capturing the UI.
-
-![Upload Flow Placeholder](docs/screenshots/upload-flow.png)
-![Results Placeholder](docs/screenshots/results.png)
-
-## License
-MIT
